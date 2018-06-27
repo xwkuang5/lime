@@ -60,6 +60,7 @@ class BaseDiscretizer():
             self.lambdas[feature] = lambda x, qts=qts: np.searchsorted(qts, x)
             discretized = self.lambdas[feature](data[:, feature])
 
+            # means and stds of the examples in the bin
             self.means[feature] = []
             self.stds[feature] = []
             for x in range(n_bins + 1):
@@ -97,6 +98,7 @@ class BaseDiscretizer():
                     ret[:, feature]).astype(int)
         return ret
 
+    # lossy undiscretization
     def undiscretize(self, data):
         ret = data.copy()
         for feature in self.means:
@@ -148,20 +150,21 @@ class DecileDiscretizer(BaseDiscretizer):
 
 
 class EntropyDiscretizer(BaseDiscretizer):
-    def __init__(self, data, categorical_features, feature_names, labels=None, random_state=None):
+    def __init__(self, data, categorical_features, feature_names, labels=None, tree_depth=3, random_state=None):
         if(labels is None):
             raise ValueError('Labels must be not None when using \
                              EntropyDiscretizer')
         BaseDiscretizer.__init__(self, data, categorical_features,
                                  feature_names, labels=labels,
                                  random_state=random_state)
+        self._tree_depth = tree_depth
 
     def bins(self, data, labels):
         bins = []
         for feature in self.to_discretize:
             # Entropy splitting / at most 8 bins so max_depth=3
             dt = sklearn.tree.DecisionTreeClassifier(criterion='entropy',
-                                                     max_depth=3,
+                                                     max_depth=self._tree_depth,
                                                      random_state=self.random_state)
             x = np.reshape(data[:, feature], (-1, 1))
             dt.fit(x, labels)

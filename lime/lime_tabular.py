@@ -263,8 +263,13 @@ class LimeTabularExplainer(object):
             explanations.
         """
         data, inverse = self.__data_inverse(data_row, num_samples)
+        # after this step, continuous features will have mean 0 and standard devication of 1
+        # categorical features will be either 0 or 1
+
         scaled_data = (data - self.scaler.mean_) / self.scaler.scale_
 
+        # the distance metric is always applied on the scaled data, which means that if all the
+        # features are categorical, it makes more sense to use edit distance or hamming distance
         distances = sklearn.metrics.pairwise_distances(
                 scaled_data,
                 scaled_data[0].reshape(1, -1),
@@ -322,6 +327,7 @@ class LimeTabularExplainer(object):
         for i in self.categorical_features:
             if self.discretizer is not None and i in self.discretizer.lambdas:
                 continue
+            # level of the categorical feature
             name = int(data_row[i])
             if i in self.categorical_names:
                 name = self.categorical_names[i][name]
@@ -335,6 +341,7 @@ class LimeTabularExplainer(object):
             discretized_instance = self.discretizer.discretize(data_row)
             discretized_feature_names = copy.deepcopy(feature_names)
             for f in self.discretizer.names:
+                # get the name of the discretized interval
                 discretized_feature_names[f] = self.discretizer.names[f][int(
                         discretized_instance[f])]
 
@@ -359,6 +366,7 @@ class LimeTabularExplainer(object):
             ret_exp.max_value = max_y
             labels = [0]
 
+        # score and local_pred are overwritten in cases with more than one labels
         for label in labels:
             (ret_exp.intercept[label],
              ret_exp.local_exp[label],
@@ -405,17 +413,22 @@ class LimeTabularExplainer(object):
         data = np.zeros((num_samples, data_row.shape[0]))
         categorical_features = range(data_row.shape[0])
         if self.discretizer is None:
+            # discretizer will be None only if discretize_continus is False
             data = self.random_state.normal(
                     0, 1, num_samples * data_row.shape[0]).reshape(
                     num_samples, data_row.shape[0])
             if self.sample_around_instance:
+                # this way of sampling does not make sense anymore for categorical features
                 data = data * self.scaler.scale_ + data_row
             else:
+                # for categorical features, this will not change data because scale_ = 1 and mean_ = 0
                 data = data * self.scaler.scale_ + self.scaler.mean_
+            # change categorical features so that we do not sample from perturbbed continuous features
             categorical_features = self.categorical_features
             first_row = data_row
         else:
             first_row = self.discretizer.discretize(data_row)
+        # from this point on, we can treat all features as discrete features
         data[0] = data_row.copy()
         inverse = data.copy()
         for column in categorical_features:
