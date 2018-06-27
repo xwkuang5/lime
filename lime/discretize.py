@@ -148,16 +148,35 @@ class DecileDiscretizer(BaseDiscretizer):
             bins.append(qts)
         return bins
 
+class CustomQuantileDiscretizer(BaseDiscretizer):
+
+    def __init__(self, data, categorical_features, feature_names, labels=None, custom_quantile=None, random_state=None):
+        self._custom_quantile = custom_quantile
+
+        BaseDiscretizer.__init__(self, data, categorical_features,
+                                 feature_names, labels=labels,
+                                 random_state=random_state)
+
+    def bins(self, data, labels):
+        bins = []
+        for feature in self.to_discretize:
+            qts = np.array(np.percentile(data[:, feature], self._custom_quantile))
+            bins.append(qts)
+
+        return bins
+
 
 class EntropyDiscretizer(BaseDiscretizer):
     def __init__(self, data, categorical_features, feature_names, labels=None, tree_depth=3, random_state=None):
         if(labels is None):
             raise ValueError('Labels must be not None when using \
                              EntropyDiscretizer')
+        self._tree_depth = tree_depth
+
         BaseDiscretizer.__init__(self, data, categorical_features,
                                  feature_names, labels=labels,
                                  random_state=random_state)
-        self._tree_depth = tree_depth
+
 
     def bins(self, data, labels):
         bins = []
@@ -168,6 +187,7 @@ class EntropyDiscretizer(BaseDiscretizer):
                                                      random_state=self.random_state)
             x = np.reshape(data[:, feature], (-1, 1))
             dt.fit(x, labels)
+            # dt.tree_.children_left > -1 => nodes which are not leaf nodes
             qts = dt.tree_.threshold[np.where(dt.tree_.children_left > -1)]
 
             if qts.shape[0] == 0:

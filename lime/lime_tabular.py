@@ -13,6 +13,7 @@ from sklearn.utils import check_random_state
 
 from lime.discretize import QuartileDiscretizer
 from lime.discretize import DecileDiscretizer
+from lime.discretize import CustomQuantileDiscretizer
 from lime.discretize import EntropyDiscretizer
 from lime.discretize import BaseDiscretizer
 from . import explanation
@@ -110,7 +111,9 @@ class LimeTabularExplainer(object):
                  discretize_continuous=True,
                  discretizer='quartile',
                  sample_around_instance=False,
-                 random_state=None):
+                 random_state=None,
+                 tree_depth=3,
+                 custom_quantile=None):
         """Init function.
 
         Args:
@@ -172,10 +175,17 @@ class LimeTabularExplainer(object):
                 self.discretizer = DecileDiscretizer(
                         training_data, self.categorical_features,
                         self.feature_names, labels=training_labels)
+            elif discretizer == 'custom':
+                self.discretizer = CustomQuantileDiscretizer(
+                        training_data, self.categorical_features,
+                        self.feature_names, labels=training_labels,
+                        custom_quantile=custom_quantile
+                )
             elif discretizer == 'entropy':
                 self.discretizer = EntropyDiscretizer(
                         training_data, self.categorical_features,
-                        self.feature_names, labels=training_labels)
+                        self.feature_names, labels=training_labels,
+                        tree_depth=tree_depth)
             elif isinstance(discretizer, BaseDiscretizer):
                 self.discretizer = discretizer
             else:
@@ -366,11 +376,10 @@ class LimeTabularExplainer(object):
             ret_exp.max_value = max_y
             labels = [0]
 
-        # score and local_pred are overwritten in cases with more than one labels
         for label in labels:
             (ret_exp.intercept[label],
              ret_exp.local_exp[label],
-             ret_exp.score, ret_exp.local_pred) = self.base.explain_instance_with_data(
+             ret_exp.score[label], ret_exp.local_pred[label]) = self.base.explain_instance_with_data(
                     scaled_data,
                     yss,
                     distances,
