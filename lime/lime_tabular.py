@@ -11,11 +11,11 @@ import sklearn
 import sklearn.preprocessing
 from sklearn.utils import check_random_state
 
-from lime.discretize import QuartileDiscretizer
-from lime.discretize import DecileDiscretizer
-from lime.discretize import CustomQuantileDiscretizer
-from lime.discretize import EntropyDiscretizer
-from lime.discretize import BaseDiscretizer
+from .discretize import QuartileDiscretizer
+from .discretize import DecileDiscretizer
+from .discretize import CustomQuantileDiscretizer
+from .discretize import EntropyDiscretizer
+from .discretize import BaseDiscretizer
 from . import explanation
 from . import lime_base
 
