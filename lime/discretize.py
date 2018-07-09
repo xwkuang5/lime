@@ -2,6 +2,7 @@
 Discretizers classes, to be used in lime_tabular
 """
 import numpy as np
+import scipy.stats as stats
 import sklearn
 import sklearn.tree
 from sklearn.utils import check_random_state
@@ -18,7 +19,12 @@ class BaseDiscretizer():
 
     __metaclass__ = ABCMeta  # abstract class
 
-    def __init__(self, data, categorical_features, feature_names, labels=None, random_state=None):
+    def __init__(self,
+                 data,
+                 categorical_features,
+                 feature_names,
+                 labels=None,
+                 random_state=None):
         """Initializer
         Args:
             data: numpy 2d array
@@ -32,34 +38,52 @@ class BaseDiscretizer():
             feature_names: list of names (strings) corresponding to the columns
                 in the training data.
         """
-        self.to_discretize = ([x for x in range(data.shape[1])
-                              if x not in categorical_features])
+
+        # features that need to be discretized
+        self.to_discretize = ([
+            x for x in range(data.shape[1]) if x not in categorical_features
+        ])
+        # names of the features in bin format, i.e., x <= y <= z
         self.names = {}
+
+        # functions to return the bin position of a feature
         self.lambdas = {}
+
+        # means of the feature in every bin
         self.means = {}
+
+        # stds of the feature in every bin
         self.stds = {}
+
+        # mins of the feature in every bin
         self.mins = {}
+
+        # maxs of the feature in every bin
         self.maxs = {}
+
         self.random_state = check_random_state(random_state)
 
         # To override when implementing a custom binning
         bins = self.bins(data, labels)
+
+        # create bins for every feature
         bins = [np.unique(x) for x in bins]
 
         for feature, qts in zip(self.to_discretize, bins):
-            n_bins = qts.shape[0]  # Actually number of borders (= #bins-1)
+            n_bins = qts.shape[0]  # number of boarders
             boundaries = np.min(data[:, feature]), np.max(data[:, feature])
             name = feature_names[feature]
 
             self.names[feature] = ['%s <= %.2f' % (name, qts[0])]
             for i in range(n_bins - 1):
-                self.names[feature].append('%.2f < %s <= %.2f' %
-                                           (qts[i], name, qts[i + 1]))
+                self.names[feature].append(
+                    '%.2f < %s <= %.2f' % (qts[i], name, qts[i + 1]))
             self.names[feature].append('%s > %.2f' % (name, qts[n_bins - 1]))
 
             self.lambdas[feature] = lambda x, qts=qts: np.searchsorted(qts, x)
             discretized = self.lambdas[feature](data[:, feature])
 
+            # means and stds of the examples in the bin
             self.means[feature] = []
             self.stds[feature] = []
             for x in range(n_bins + 1):
@@ -97,6 +121,7 @@ class BaseDiscretizer():
                     ret[:, feature]).astype(int)
         return ret
 
+    # lossy undiscretization
     def undiscretize(self, data):
         ret = data.copy()
         for feature in self.means:
@@ -106,23 +131,81 @@ class BaseDiscretizer():
             stds = self.stds[feature]
 
             def get_inverse(q):
-                return max(mins[q],
-                           min(self.random_state.normal(means[q], stds[q]), maxs[q]))
+                return max(
+                    mins[q],
+                    min(self.random_state.normal(means[q], stds[q]), maxs[q]))
+                # # truncated normal is a lot slower
+                # lower = mins[q]
+                # upper = maxs[q]
+                # return stats.truncnorm.rvs((lower-means[q])/stds[q], (upper-means[q])/stds[q], loc=means[q], scale=stds[q], size=1, random_state=self.random_state)[0]
+
             if len(data.shape) == 1:
                 q = int(ret[feature])
                 ret[feature] = get_inverse(q)
             else:
-                ret[:, feature] = (
-                    [get_inverse(int(x)) for x in ret[:, feature]])
+                ret[:, feature] = ([
+                    get_inverse(int(x)) for x in ret[:, feature]
+                ])
+        return ret
+
+    # undiscretize the data only for features that are different
+    def undiscretize_with_original(self, data, example, example_orig):
+        """
+
+        Parameters
+        ----------
+        data : (m, n) numpy array of ints,
+            data to be undiscretized
+        example : (n,) numpy array of ints,
+            the discretized original data
+        example_orig : (n,) numpy array of floats/ints,
+            the undiscretized original data
+
+        Returns
+        -------
+        ret : (m, n) numpy array of floats/ints,
+            the undiscretized data, if data[idx, fea] == example[fea], then
+            ret[idx, fea] = example_orig[fea]
+        """
+        ret = np.tile(example_orig, (data.shape[0], 1))
+
+        diff = np.array(list(zip(*np.where(data != example))))
+
+        for feature in self.means:
+            mins = self.mins[feature]
+            maxs = self.maxs[feature]
+            means = self.means[feature]
+            stds = self.stds[feature]
+
+            def get_inverse(q):
+                return max(
+                    mins[q],
+                    min(self.random_state.normal(means[q], stds[q]), maxs[q]))
+
+            fea_examples = diff[np.where(diff[:, 1] == feature)]
+
+            for exp_idx, fea_idx in fea_examples:
+                ret[exp_idx, feature] = get_inverse(
+                    int(data[exp_idx, feature]))
+
         return ret
 
 
 class QuartileDiscretizer(BaseDiscretizer):
-    def __init__(self, data, categorical_features, feature_names, labels=None, random_state=None):
+    def __init__(self,
+                 data,
+                 categorical_features,
+                 feature_names,
+                 labels=None,
+                 random_state=None):
 
-        BaseDiscretizer.__init__(self, data, categorical_features,
-                                 feature_names, labels=labels,
-                                 random_state=random_state)
+        BaseDiscretizer.__init__(
+            self,
+            data,
+            categorical_features,
+            feature_names,
+            labels=labels,
+            random_state=random_state)
 
     def bins(self, data, labels):
         bins = []
@@ -133,38 +216,90 @@ class QuartileDiscretizer(BaseDiscretizer):
 
 
 class DecileDiscretizer(BaseDiscretizer):
-    def __init__(self, data, categorical_features, feature_names, labels=None, random_state=None):
-        BaseDiscretizer.__init__(self, data, categorical_features,
-                                 feature_names, labels=labels,
-                                 random_state=random_state)
+    def __init__(self,
+                 data,
+                 categorical_features,
+                 feature_names,
+                 labels=None,
+                 random_state=None):
+        BaseDiscretizer.__init__(
+            self,
+            data,
+            categorical_features,
+            feature_names,
+            labels=labels,
+            random_state=random_state)
 
     def bins(self, data, labels):
         bins = []
         for feature in self.to_discretize:
-            qts = np.array(np.percentile(data[:, feature],
-                                         [10, 20, 30, 40, 50, 60, 70, 80, 90]))
+            qts = np.array(
+                np.percentile(data[:, feature],
+                              [10, 20, 30, 40, 50, 60, 70, 80, 90]))
             bins.append(qts)
         return bins
 
 
+class CustomQuantileDiscretizer(BaseDiscretizer):
+    def __init__(self,
+                 data,
+                 categorical_features,
+                 feature_names,
+                 labels=None,
+                 custom_quantile=None,
+                 random_state=None):
+        self._custom_quantile = custom_quantile
+
+        BaseDiscretizer.__init__(
+            self,
+            data,
+            categorical_features,
+            feature_names,
+            labels=labels,
+            random_state=random_state)
+
+    def bins(self, data, labels):
+        bins = []
+        for feature in self.to_discretize:
+            qts = np.array(
+                np.percentile(data[:, feature], self._custom_quantile))
+            bins.append(qts)
+
+        return bins
+
+
 class EntropyDiscretizer(BaseDiscretizer):
-    def __init__(self, data, categorical_features, feature_names, labels=None, random_state=None):
-        if(labels is None):
+    def __init__(self,
+                 data,
+                 categorical_features,
+                 feature_names,
+                 labels=None,
+                 tree_depth=3,
+                 random_state=None):
+        if (labels is None):
             raise ValueError('Labels must be not None when using \
                              EntropyDiscretizer')
-        BaseDiscretizer.__init__(self, data, categorical_features,
-                                 feature_names, labels=labels,
-                                 random_state=random_state)
+        self._tree_depth = tree_depth
+
+        BaseDiscretizer.__init__(
+            self,
+            data,
+            categorical_features,
+            feature_names,
+            labels=labels,
+            random_state=random_state)
 
     def bins(self, data, labels):
         bins = []
         for feature in self.to_discretize:
             # Entropy splitting / at most 8 bins so max_depth=3
-            dt = sklearn.tree.DecisionTreeClassifier(criterion='entropy',
-                                                     max_depth=3,
-                                                     random_state=self.random_state)
+            dt = sklearn.tree.DecisionTreeClassifier(
+                criterion='entropy',
+                max_depth=self._tree_depth,
+                random_state=self.random_state)
             x = np.reshape(data[:, feature], (-1, 1))
             dt.fit(x, labels)
+            # dt.tree_.children_left > -1 => nodes which are not leaf nodes
             qts = dt.tree_.threshold[np.where(dt.tree_.children_left > -1)]
 
             if qts.shape[0] == 0:

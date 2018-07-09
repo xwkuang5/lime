@@ -96,8 +96,8 @@ class Explanation(object):
         self.domain_mapper = domain_mapper
         self.local_exp = {}
         self.intercept = {}
-        self.score = None
-        self.local_pred = None
+        self.score = {} # change from None to {}
+        self.local_pred = {} # change from None to {}
         self.scaled_data = None
         if mode == 'classification':
             self.class_names = class_names
