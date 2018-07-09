@@ -166,7 +166,8 @@ class LimeBase(object):
             neighborhood_data[:, used_features],
             labels_column, sample_weight=weights)
 
-        local_pred = easy_model.predict(neighborhood_data[0, used_features].reshape(1, -1))
+        # add [0] to return a single value instead of an ndarray
+        local_pred = easy_model.predict(neighborhood_data[0, used_features].reshape(1, -1))[0]
 
         if self.verbose:
             print('Intercept', easy_model.intercept_)
